@@ -34,7 +34,7 @@ class Switchboard(nodeParams: NodeParams, watcher: ActorRef, relayer: ActorRef, 
   import Switchboard._
 
   // we load channels from database
-  {
+  val peersWithChannels: Set[PublicKey] = {
     // Check if channels that are still in CLOSING state have actually been closed. This can happen when the app is stopped
     // just after a channel state has transitioned to CLOSED and before it has effectively been removed.
     // Closed channels will be removed, other channels will be restored.
@@ -44,9 +44,9 @@ class Switchboard(nodeParams: NodeParams, watcher: ActorRef, relayer: ActorRef, 
       nodeParams.db.channels.removeChannel(c.channelId)
     })
 
-    channels
-      .groupBy(_.commitments.remoteParams.nodeId)
-      .map { case (remoteNodeId, states) => createOrGetPeer(remoteNodeId, offlineChannels = states.toSet) }
+    val peerChannels = channels.groupBy(_.commitments.remoteParams.nodeId)
+    peerChannels.foreach { case (remoteNodeId, states) => createOrGetPeer(remoteNodeId, offlineChannels = states.toSet) }
+    peerChannels.keySet
   }
 
   def receive: Receive = {
@@ -75,7 +75,8 @@ class Switchboard(nodeParams: NodeParams, watcher: ActorRef, relayer: ActorRef, 
       // if this is an incoming connection, we might not yet have created the peer
       val peer = createOrGetPeer(authenticated.remoteNodeId, offlineChannels = Set.empty)
       val features = nodeParams.featuresFor(authenticated.remoteNodeId)
-      val doSync = nodeParams.syncWhitelist.isEmpty || nodeParams.syncWhitelist.contains(authenticated.remoteNodeId)
+      // if the peer is whitelisted, we sync with them, otherwise we only sync with peers with whom we have at least one channel
+      val doSync = nodeParams.syncWhitelist.contains(authenticated.remoteNodeId) || (nodeParams.syncWhitelist.isEmpty && peersWithChannels.contains(authenticated.remoteNodeId))
       authenticated.peerConnection ! PeerConnection.InitializeConnection(peer, nodeParams.chainHash, features, doSync)
 
     case Symbol("peers") => sender ! context.children

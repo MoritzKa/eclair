@@ -566,7 +566,9 @@ object Router {
 
   case class ShortChannelIdAndFlag(shortChannelId: ShortChannelId, flag: Long)
 
-  case class Syncing(pending: List[RoutingMessage], total: Int)
+  case class Syncing(pending: List[RoutingMessage], total: Int) {
+    val started: Boolean = total > 0
+  }
 
   case class Data(nodes: Map[PublicKey, NodeAnnouncement],
                   channels: SortedMap[ShortChannelId, PublicChannel],

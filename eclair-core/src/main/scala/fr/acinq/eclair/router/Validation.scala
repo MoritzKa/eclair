@@ -394,12 +394,12 @@ object Validation {
         case RemoteGossip(peerConnection, remoteNodeId) =>
           val query = QueryShortChannelIds(u.chainHash, EncodedShortChannelIds(routerConf.encodingType, List(u.shortChannelId)), TlvStream.empty)
           d.sync.get(remoteNodeId) match {
-            case Some(sync) =>
+            case Some(sync) if sync.started =>
               // we already have a pending request to that node, let's add this channel to the list and we'll get it later
               // TODO: we only request channels with old style channel_query
               d.copy(sync = d.sync + (remoteNodeId -> sync.copy(pending = sync.pending :+ query, total = sync.total + 1)))
-            case None =>
-              // we send the query right away
+            case _ =>
+              // otherwise we send the query right away
               peerConnection ! query
               d.copy(sync = d.sync + (remoteNodeId -> Syncing(pending = Nil, total = 1)))
           }
