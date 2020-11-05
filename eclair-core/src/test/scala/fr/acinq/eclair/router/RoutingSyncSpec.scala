@@ -82,7 +82,7 @@ class RoutingSyncSpec extends TestKitBaseClass with AnyFunSuiteLike with Paralle
     }
     val srcId = src.underlyingActor.nodeParams.nodeId
     val tgtId = tgt.underlyingActor.nodeParams.nodeId
-    sender.send(src, SendChannelQuery(src.underlyingActor.nodeParams.chainHash, tgtId, pipe.ref, extendedQueryFlags_opt))
+    sender.send(src, SendChannelQuery(src.underlyingActor.nodeParams.chainHash, tgtId, pipe.ref, replacePrevious = true, extendedQueryFlags_opt))
     // src sends a query_channel_range to bob
     val qcr = pipe.expectMsgType[QueryChannelRange]
     pipe.send(tgt, PeerRoutingMessage(pipe.ref, srcId, qcr))
@@ -257,9 +257,14 @@ class RoutingSyncSpec extends TestKitBaseClass with AnyFunSuiteLike with Paralle
     assert(!router.stateData.sync.contains(remoteNodeId))
 
     // ask router to send a channel range query
-    sender.send(router, SendChannelQuery(params.chainHash, remoteNodeId, sender.ref, None))
+    sender.send(router, SendChannelQuery(params.chainHash, remoteNodeId, sender.ref, replacePrevious = true, None))
     val QueryChannelRange(chainHash, firstBlockNum, numberOfBlocks, _) = sender.expectMsgType[QueryChannelRange]
     sender.expectMsgType[GossipTimestampFilter]
+    assert(router.stateData.sync.get(remoteNodeId) === Some(Syncing(Nil, 0)))
+
+    // ask router to send another channel range query
+    sender.send(router, SendChannelQuery(params.chainHash, remoteNodeId, sender.ref, replacePrevious = false, None))
+    sender.expectNoMsg(100 millis) // it's a duplicate and should be ignored
     assert(router.stateData.sync.get(remoteNodeId) === Some(Syncing(Nil, 0)))
 
     val block1 = ReplyChannelRange(chainHash, firstBlockNum, numberOfBlocks, 1, EncodedShortChannelIds(EncodingType.UNCOMPRESSED, fakeRoutingInfo.take(params.routerConf.channelQueryChunkSize).keys.toList), None, None)
@@ -275,7 +280,7 @@ class RoutingSyncSpec extends TestKitBaseClass with AnyFunSuiteLike with Paralle
     assert(sync.total == 1)
 
     // simulate a re-connection
-    sender.send(router, SendChannelQuery(params.chainHash, remoteNodeId, sender.ref, None))
+    sender.send(router, SendChannelQuery(params.chainHash, remoteNodeId, sender.ref, replacePrevious = true, None))
     sender.expectMsgType[QueryChannelRange]
     sender.expectMsgType[GossipTimestampFilter]
     assert(router.stateData.sync.get(remoteNodeId) === Some(Syncing(Nil, 0)))

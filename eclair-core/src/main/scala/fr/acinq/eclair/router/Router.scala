@@ -519,7 +519,7 @@ object Router {
   // @formatter:on
 
   // @formatter:off
-  case class SendChannelQuery(chainHash: ByteVector32, remoteNodeId: PublicKey, to: ActorRef, flags_opt: Option[QueryChannelRangeTlv]) extends RemoteTypes
+  case class SendChannelQuery(chainHash: ByteVector32, remoteNodeId: PublicKey, to: ActorRef, replacePrevious: Boolean, flags_opt: Option[QueryChannelRangeTlv]) extends RemoteTypes
   case object GetNetworkStats
   case class GetNetworkStatsResponse(stats: Option[NetworkStats])
   case object GetRoutingState

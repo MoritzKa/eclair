@@ -46,23 +46,30 @@ object Sync {
 
   def handleSendChannelQuery(d: Data, s: SendChannelQuery)(implicit ctx: ActorContext, log: LoggingAdapter): Data = {
     implicit val sender: ActorRef = ctx.self // necessary to preserve origin when sending messages to other actors
-    // ask for everything
-    // we currently send only one query_channel_range message per peer, when we just (re)connected to it, so we don't
-    // have to worry about sending a new query_channel_range when another query is still in progress
-    val query = QueryChannelRange(s.chainHash, firstBlockNum = 0L, numberOfBlocks = Int.MaxValue.toLong, TlvStream(s.flags_opt.toList))
-    log.info("sending query_channel_range={}", query)
-    s.to ! query
+    // we currently send query_channel_range when:
+    //  * we just (re)connected to a peer with whom we have channels
+    //  * we validate a new channel with that peer
+    // we must ensure we don't send a new query_channel_range while another query is still in progress
+    if (s.replacePrevious || !d.sync.contains(s.remoteNodeId)) {
+      // ask for everything
+      val query = QueryChannelRange(s.chainHash, firstBlockNum = 0L, numberOfBlocks = Int.MaxValue.toLong, TlvStream(s.flags_opt.toList))
+      log.info("sending query_channel_range={}", query)
+      s.to ! query
 
-    // we also set a pass-all filter for now (we can update it later) for the future gossip messages, by setting
-    // the first_timestamp field to the current date/time and timestamp_range to the maximum value
-    // NB: we can't just set firstTimestamp to 0, because in that case peer would send us all past messages matching
-    // that (i.e. the whole routing table)
-    val filter = GossipTimestampFilter(s.chainHash, firstTimestamp = System.currentTimeMillis.milliseconds.toSeconds, timestampRange = Int.MaxValue)
-    s.to ! filter
+      // we also set a pass-all filter for now (we can update it later) for the future gossip messages, by setting
+      // the first_timestamp field to the current date/time and timestamp_range to the maximum value
+      // NB: we can't just set firstTimestamp to 0, because in that case peer would send us all past messages matching
+      // that (i.e. the whole routing table)
+      val filter = GossipTimestampFilter(s.chainHash, firstTimestamp = System.currentTimeMillis.milliseconds.toSeconds, timestampRange = Int.MaxValue)
+      s.to ! filter
 
-    // clean our sync state for this peer: we receive a SendChannelQuery just when we connect/reconnect to a peer and
-    // will start a new complete sync process
-    d.copy(sync = d.sync + (s.remoteNodeId -> Syncing(Nil, 0)))
+      // clean our sync state for this peer: we receive a SendChannelQuery just when we connect/reconnect to a peer and
+      // will start a new complete sync process
+      d.copy(sync = d.sync + (s.remoteNodeId -> Syncing(Nil, 0)))
+    } else {
+      log.info("not sending query_channel_range: sync already in progress")
+      d
+    }
   }
 
   def handleQueryChannelRange(channels: SortedMap[ShortChannelId, PublicChannel], routerConf: RouterConf, origin: RemoteGossip, q: QueryChannelRange)(implicit ctx: ActorContext, log: LoggingAdapter): Unit = {
